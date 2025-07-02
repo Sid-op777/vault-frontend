@@ -4,13 +4,38 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Download, Copy, Eye, Timer, Shield } from "lucide-react"
+import type { GetSnippetResponse } from "@/lib/api"
+
+function formatRemainingTime(isoString: string | undefined): string {
+  if (!isoString) return "..."
+
+  const expiryDate = new Date(isoString)
+  const now = new Date()
+  const diffSeconds = Math.round((expiryDate.getTime() - now.getTime()) / 1000)
+
+  if (diffSeconds <= 0) return "now"
+
+  const diffMinutes = Math.round(diffSeconds / 60)
+  if (diffMinutes < 60) {
+    return `in ${diffMinutes} minute${diffMinutes !== 1 ? "s" : ""}`
+  }
+
+  const diffHours = Math.round(diffMinutes / 60)
+  if (diffHours < 24) {
+    return `in ${diffHours} hour${diffHours !== 1 ? "s" : ""}`
+  }
+
+  const diffDays = Math.round(diffHours / 24)
+  return `in ${diffDays} day${diffDays !== 1 ? "s" : ""}`
+}
 
 interface ContentDisplayProps {
   content: string
   id: string
+  metadata: GetSnippetResponse | null
 }
 
-export function ContentDisplay({ content, id }: ContentDisplayProps) {
+export function ContentDisplay({ content, id, metadata }: ContentDisplayProps) {
   const [copied, setCopied] = useState(false)
 
   const handleCopy = async () => {
@@ -35,6 +60,9 @@ export function ContentDisplay({ content, id }: ContentDisplayProps) {
     URL.revokeObjectURL(url)
   }
 
+  const viewsText =
+    metadata?.viewsRemaining === 1 ? "1 view remaining" : `${metadata?.viewsRemaining ?? "..."} views remaining`
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header Info */}
@@ -54,10 +82,10 @@ export function ContentDisplay({ content, id }: ContentDisplayProps) {
           </div>
           <div className="flex items-center text-green-700 dark:text-green-400">
             <Timer className="w-4 h-4 mr-1" />
-            Expires in 14 minutes
+            Expires {formatRemainingTime(metadata?.expiresAt)}
           </div>
           <div className="flex items-center text-green-700 dark:text-green-400">
-            <Eye className="w-4 h-4 mr-1" />1 view remaining
+            <Eye className="w-4 h-4 mr-1" />{viewsText}
           </div>
         </div>
       </div>

@@ -25,6 +25,8 @@ import { Header } from "@/components/header"
 import { Footer } from "@/components/footer"
 import { DeleteConfirmationDialog } from "@/components/delete-confirmation-dialog"
 import { QRCodeDialog } from "@/components/qr-code-dialog"
+import * as crypto from "@/lib/crypto";
+import * as api from "@/lib/api";
 
 export default function SecureSnippetLanding() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -34,48 +36,99 @@ export default function SecureSnippetLanding() {
   const [expiry, setExpiry] = useState("15 minutes")
   const [allowedViews, setAllowedViews] = useState("")
   const [isCreating, setIsCreating] = useState(false)
-  const [snippetCreated, setSnippetCreated] = useState(false)
-  const [secureUrl] = useState("https://snippet.secure/v/a7b9c2d4e5f6")
+  const [error, setError] = useState<string | null>(null);
+  const [creationResult, setCreationResult] = useState<{
+    id: string;
+    revocationToken: string;
+    secureUrl: string;
+  } | null>(null);
+  const [copied, setCopied] = useState(false)
 
   const handleCreateSnippet = async () => {
     if (!content.trim()) {
-      return // Don't create if no content
+      setError("Content cannot be empty.");
+      return
     }
 
     setIsCreating(true)
+    setError(null)
 
-    // Simulate API call delay
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-
-    setSnippetCreated(true)
-    setIsCreating(false)
-  }
-
-  const handleDeleteConfirm = () => {
-    // Handle the actual deletion logic here
-    console.log("Link deleted successfully")
-    setSnippetCreated(false)
-    setContent("")
-    setPassword("")
-    setAllowedViews("")
-    // Reset form after deletion
-  }
-
-  const handleCopyLink = async () => {
     try {
-      await navigator.clipboard.writeText(secureUrl)
-      // You could show a success toast here
-      console.log("Link copied to clipboard")
-    } catch (error) {
-      console.error("Failed to copy link:", error)
+      const isPasswordProtected = password.trim().length > 0;
+      let ciphertext: string;
+      let keyToEmbedInUrl: string | null = null;
+
+      // Step 1: Encrypt the content
+      if (isPasswordProtected) {
+        ciphertext = await crypto.encryptTextWithPassword(content, password);
+      } else {
+        const dataKey = await crypto.generateDataKey();
+        keyToEmbedInUrl = await crypto.exportKey(dataKey);
+        ciphertext = await crypto.encryptText(content, dataKey);
+      }
+      
+      // Step 2: Calculate the expiry timestamp
+      const expiryDate = new Date();
+      const [value, unit] = expiry.split(" ");
+      if (unit.startsWith('minute')) expiryDate.setMinutes(expiryDate.getMinutes() + parseInt(value));
+      if (unit.startsWith('hour')) expiryDate.setHours(expiryDate.getHours() + parseInt(value));
+      if (unit.startsWith('day')) expiryDate.setDate(expiryDate.getDate() + parseInt(value));
+
+      // Step 3: Prepare the payload for the backend
+      const payload: api.CreateSnippetPayload = {
+        ciphertext: ciphertext,
+        passwordProtected: isPasswordProtected,
+        expiresAt: expiryDate.toISOString(),
+        maxViews: allowedViews ? parseInt(allowedViews) : 1, // Default to 1 view if not specified
+      };
+
+      // Step 4: Call the API
+      const response = await api.createSnippet(payload);
+      
+      // Step 5: Construct the final URL
+      let finalUrl = `${window.location.origin}/view/${response.id}`;
+      if (keyToEmbedInUrl) {
+        finalUrl += `#${keyToEmbedInUrl}`;
+      }
+
+      // Step 6: Set the result state to show the success UI
+      setCreationResult({
+        id: response.id,
+        revocationToken: response.revocationToken,
+        secureUrl: finalUrl,
+      });
+
+    } catch (e: any) {
+      setError(e.message || "An unknown error occurred during creation.");
+    } finally {
+      setIsCreating(false);
     }
   }
 
+  const handleDeleteConfirm = async () => {
+    if (!creationResult) return;
+    setShowDeleteDialog(false); // Close the dialog first
+    try {
+      await api.deleteSnippet(creationResult.id, creationResult.revocationToken);
+      handleNewSnippet(); // Reset the whole form on successful deletion
+    } catch (e: any) {
+      setError(e.message || "Failed to delete the snippet.");
+    }
+  }
+
+  const handleCopyLink = async () => {
+    if (!creationResult?.secureUrl) return;
+    await navigator.clipboard.writeText(creationResult.secureUrl);
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   const handleNewSnippet = () => {
-    setSnippetCreated(false)
-    setContent("")
-    setPassword("")
-    setAllowedViews("")
+    setCreationResult(null);
+    setContent("");
+    setPassword("");
+    setAllowedViews("");
+    setError(null);
   }
 
   const isContentValid = content.trim().length > 0
@@ -100,7 +153,7 @@ export default function SecureSnippetLanding() {
 
             {/* Snippet Demo */}
             <div className="max-w-2xl mx-auto space-y-4">
-              {!snippetCreated ? (
+              {!creationResult ? (
                 /* Creation Form */
                 <div className="bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-lg p-6 space-y-4">
                   <div className="space-y-2">
@@ -163,7 +216,9 @@ export default function SecureSnippetLanding() {
                       />
                     </div>
                   </div>
-
+                  {error && (
+                    <p className="text-sm text-red-500 text-center">{error}</p>
+                  )}
                   <Button
                     onClick={handleCreateSnippet}
                     disabled={!isContentValid || isCreating}
@@ -204,13 +259,13 @@ export default function SecureSnippetLanding() {
                       <div className="flex-1">
                         <p className="text-sm text-green-700 dark:text-green-400 mb-1">Your secure link:</p>
                         <code className="font-mono text-sm text-green-800 dark:text-green-300 bg-green-100 dark:bg-green-900/40 px-2 py-1 rounded break-all">
-                          {secureUrl}
+                          {creationResult.secureUrl}
                         </code>
                       </div>
                     </div>
                     <p className="text-xs text-green-600 dark:text-green-400 mt-2 mb-4">
                       <Timer className="w-3 h-3 inline mr-1" />
-                      Expires in 15 minutes • {allowedViews || "1"} views allowed
+                      Expires in {expiry} • {allowedViews || "1"} views allowed
                     </p>
 
                     {/* Action Buttons */}
@@ -222,7 +277,7 @@ export default function SecureSnippetLanding() {
                         className="border-green-300 dark:border-green-700 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 bg-transparent"
                       >
                         <Copy className="w-4 h-4 mr-2" />
-                        Copy Link
+                        {copied ? "Copied!" : "Copy Link"}
                       </Button>
 
                       <Button
@@ -458,7 +513,7 @@ export default function SecureSnippetLanding() {
       />
 
       {/* QR Code Dialog */}
-      <QRCodeDialog open={showQRDialog} onOpenChange={setShowQRDialog} url={secureUrl} />
+      <QRCodeDialog open={showQRDialog} onOpenChange={setShowQRDialog} url={creationResult?.secureUrl || ''} />
     </div>
   )
 }

@@ -13,10 +13,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Lock, AlertTriangle } from "lucide-react"
+import { Lock, AlertTriangle, Loader2 } from "lucide-react"
 
 interface PasswordDialogProps {
   open: boolean
+  isDecrypting?: boolean
   onPasswordSubmit: (password: string) => void
   attempts: number
   maxAttempts: number
@@ -25,6 +26,7 @@ interface PasswordDialogProps {
 
 export function PasswordDialog({
   open,
+  isDecrypting = false,
   onPasswordSubmit,
   attempts,
   maxAttempts,
@@ -35,20 +37,21 @@ export function PasswordDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!password.trim()) return
-
-    setIsSubmitting(true)
-    await new Promise((resolve) => setTimeout(resolve, 500)) // Small delay for UX
+    if (!password.trim() || isDecrypting) return
     onPasswordSubmit(password)
-    setPassword("")
-    setIsSubmitting(false)
+
+    // setIsSubmitting(true)
+    // await new Promise((resolve) => setTimeout(resolve, 500)) // Small delay for UX
+    // onPasswordSubmit(password)
+    // setPassword("")
+    // setIsSubmitting(false)
   }
 
   const remainingAttempts = maxAttempts - attempts
 
   return (
     <Dialog open={open} onOpenChange={() => {}}>
-      <DialogContent className="sm:max-w-[425px]" hideCloseButton>
+      <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-green-600 dark:text-green-400">
             <Lock className="w-5 h-5" />
@@ -67,7 +70,7 @@ export function PasswordDialog({
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter password"
               className="font-mono"
-              disabled={isSubmitting}
+              disabled={isDecrypting}
               autoFocus
             />
 
@@ -82,18 +85,26 @@ export function PasswordDialog({
           </div>
 
           <DialogFooter>
+            {/* Button state now reflects the isDecrypting prop */}
             <Button
               type="submit"
-              disabled={!password.trim() || isSubmitting}
+              disabled={!password.trim() || isDecrypting}
               className="w-full bg-green-600 hover:bg-green-700"
             >
-              {isSubmitting ? "Verifying..." : "Unlock Content"}
+              {isDecrypting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Verifying...
+                </>
+              ) : (
+                "Unlock Content"
+              )}
             </Button>
           </DialogFooter>
         </form>
 
         <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
-          Attempt {attempts} of {maxAttempts}
+          Attempt {attempts+1} of {maxAttempts}
         </div>
       </DialogContent>
     </Dialog>

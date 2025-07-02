@@ -62,6 +62,12 @@ export function Footer() {
               >
                 API Docs
               </a>
+              <a
+                href="/docs"
+                className="text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 transition-colors"
+              >
+                Status Page
+              </a>
             </div>
           </div>
         </div>
